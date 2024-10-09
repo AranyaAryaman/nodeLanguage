@@ -27,7 +27,6 @@ map<string, Node> nodes;
 map<string, Pipe> pipes;
 map<string, vector<string> > concatenates;
 
-// Function to parse the flow file
 void parseFlowFile(const string& filename) {
     ifstream file(filename);
     string line;
@@ -123,7 +122,7 @@ void runPipe(Pipe& pipe) {
     }
 }
 
-// Function to handle the execution of a concatenate
+
 void concatenateNodes(const vector<string>& parts) {
     int pipefds[2];
     pid_t pid;
@@ -133,22 +132,20 @@ void concatenateNodes(const vector<string>& parts) {
 
         pid = fork();
         if (pid == 0) {
-            // Child process: execute the current part
-            if (i > 0) dup2(pipefds[0], STDIN_FILENO);  // Get input from previous process
-            if (i < parts.size() - 1) dup2(pipefds[1], STDOUT_FILENO);  // Output to next process
+            if (i > 0) dup2(pipefds[0], STDIN_FILENO);  
+            if (i < parts.size() - 1) dup2(pipefds[1], STDOUT_FILENO);  
 
             close(pipefds[0]);
             close(pipefds[1]);
 
             if (nodes.find(parts[i]) != nodes.end()) {
-                executeNode(nodes[parts[i]]);  // It's a node
+                executeNode(nodes[parts[i]]);  
             } else if (pipes.find(parts[i]) != pipes.end()) {
-                runPipe(pipes[parts[i]]);  // It's a pipe
+                runPipe(pipes[parts[i]]);  
             } else if (concatenates.find(parts[i]) != concatenates.end()) {
-                concatenateNodes(concatenates[parts[i]]);  // It's a concatenate
+                concatenateNodes(concatenates[parts[i]]);  
             }
         } else {
-            // Parent process: close pipes and wait
             if (i > 0) close(pipefds[0]);
             if (i < parts.size() - 1) close(pipefds[1]);
             wait(nullptr);
