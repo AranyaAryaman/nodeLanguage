@@ -1,8 +1,6 @@
-#include<iostream>
-#include<unordered_map>
-#include<unordered_set>
-#include<vector>
-#include<list>
+#include <iostream>
+#include <unordered_map>
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <map>
@@ -23,9 +21,13 @@ struct Pipe {
     string to;
 };
 
+void concatenateNodes(const vector<string>& parts);
+
 map<string, Node> nodes;
 map<string, Pipe> pipes;
+map<string, vector<string> > concatenates;
 
+// Function to parse the flow file
 void parseFlowFile(const string& filename) {
     ifstream file(filename);
     string line;
@@ -34,93 +36,127 @@ void parseFlowFile(const string& filename) {
         istringstream iss(line);
         string key;
         iss >> key;
-        string temp = key.substr(0,4);
+        string temp = key.substr(0, 4);
+
         if (temp == "node") {
             string nodeName, exec;
             size_t pos = key.find("=");
-            nodeName = key.substr(pos+1);
+            nodeName = key.substr(pos + 1);
             getline(file, exec); 
             pos = exec.find("="); 
-            nodes[nodeName].command = exec.substr(pos+1);  
+            nodes[nodeName].command = exec.substr(pos + 1);  
         } 
         else if (temp == "pipe") {
             string pipeName, pipeFrom, pipeTo;
-            Pipe pipe;
             size_t pos = key.find("=");
-            pipeName = key.substr(pos+1);
-            getline(file,pipeFrom);
+            pipeName = key.substr(pos + 1);
+            getline(file, pipeFrom);
             pos = pipeFrom.find("=");
-            pipes[pipeName].from = pipeFrom.substr(pos+1);
-            getline(file,pipeTo);
+            pipes[pipeName].from = pipeFrom.substr(pos + 1);
+            getline(file, pipeTo);
             pos = pipeTo.find("=");
-            pipes[pipeName].to = pipeTo.substr(pos+1);
+            pipes[pipeName].to = pipeTo.substr(pos + 1);
+        }
+        else if (temp == "conc") {
+            string concatName, parts;
+            vector<string> toPush;
+            size_t pos = key.find("=");
+            concatName = key.substr(pos + 1);
+            getline(file, parts);
+            int numParts = stoi(parts.substr(parts.find("=") + 1));
+            string temp;
+            for (int i = 0; i < numParts; i++) {
+                getline(file, temp);
+                pos = temp.find("=");
+                toPush.push_back(temp.substr(pos + 1));
+            }
+            concatenates[concatName] = toPush;
         }
     }
 }
 
 
 void executeNode(const Node& node) {
-    // Prepare the command and arguments for execvp
     vector<char*> args;
     istringstream iss(node.command);
     string arg;
+
     while (iss >> arg) {
         args.push_back(strdup(arg.c_str()));
     }
     args.push_back(nullptr);
 
-    execvp(args[0], args.data());  // Replace current process with command
+    execvp(args[0], args.data());
     perror("execvp failed");
+    exit(EXIT_FAILURE); 
 }
 
-void runFlow(const string& action) {
-    // Pipe creation
+
+void runPipe(Pipe& pipe) {
     int pipefds[2];
-    pipe(pipefds);  // Create a pipe
+    ::pipe(pipefds);
 
     pid_t pid = fork();
     if (pid == 0) {
-        // In child process: execute the first node
-        close(pipefds[0]);  // Close reading end
-        dup2(pipefds[1], STDOUT_FILENO);  // Redirect stdout to pipe
-        close(pipefds[1]);
-        executeNode(nodes[pipes[0].from]);
-    } else {
-        // In parent process: execute the second node
-        close(pipefds[1]);  // Close writing end
-        dup2(pipefds[0], STDIN_FILENO);  // Redirect stdin to pipe
         close(pipefds[0]);
-        executeNode(nodes[pipes[0].to]);
-        wait(nullptr);  // Wait for child process to finish
+        dup2(pipefds[1], STDOUT_FILENO);  
+        close(pipefds[1]);
+        if (nodes.find(pipe.from) != nodes.end()) {
+            executeNode(nodes[pipe.from]); 
+        } else if (pipes.find(pipe.from) != pipes.end()) {
+            runPipe(pipes[pipe.from]);  
+        } else if (concatenates.find(pipe.from) != concatenates.end()) {
+            concatenateNodes(concatenates[pipe.from]);  
+        }
+    } else {
+        close(pipefds[1]);
+        dup2(pipefds[0], STDIN_FILENO);  
+        close(pipefds[0]);
+        if (nodes.find(pipe.to) != nodes.end()) {
+            executeNode(nodes[pipe.to]);  
+        } else if (pipes.find(pipe.to) != pipes.end()) {
+            runPipe(pipes[pipe.to]);  
+        } else if (concatenates.find(pipe.to) != concatenates.end()) {
+            concatenateNodes(concatenates[pipe.to]);  
+        }
+        wait(nullptr);  
     }
 }
 
+// Function to handle the execution of a concatenate
 void concatenateNodes(const vector<string>& parts) {
     int pipefds[2];
-    pipe(pipefds);
+    pid_t pid;
 
     for (size_t i = 0; i < parts.size(); ++i) {
-        pid_t pid = fork();
+        if (i < parts.size() - 1) pipe(pipefds);
+
+        pid = fork();
         if (pid == 0) {
-            if (i > 0) {
-                dup2(pipefds[0], STDIN_FILENO);  // Redirect input from previous process
-            }
-            if (i < parts.size() - 1) {
-                dup2(pipefds[1], STDOUT_FILENO);  // Redirect output to next process
-            }
+            // Child process: execute the current part
+            if (i > 0) dup2(pipefds[0], STDIN_FILENO);  // Get input from previous process
+            if (i < parts.size() - 1) dup2(pipefds[1], STDOUT_FILENO);  // Output to next process
+
             close(pipefds[0]);
             close(pipefds[1]);
 
-            executeNode(nodes[parts[i]]);
+            if (nodes.find(parts[i]) != nodes.end()) {
+                executeNode(nodes[parts[i]]);  // It's a node
+            } else if (pipes.find(parts[i]) != pipes.end()) {
+                runPipe(pipes[parts[i]]);  // It's a pipe
+            } else if (concatenates.find(parts[i]) != concatenates.end()) {
+                concatenateNodes(concatenates[parts[i]]);  // It's a concatenate
+            }
         } else {
-            // Parent process waits for the child
+            // Parent process: close pipes and wait
+            if (i > 0) close(pipefds[0]);
+            if (i < parts.size() - 1) close(pipefds[1]);
             wait(nullptr);
         }
     }
 }
 
-int main(int argc, char* argv[]){
-    
+int main(int argc, char* argv[]) {
     if (argc != 3) {
         cerr << "Usage: " << argv[0] << " <flow file> <action>" << endl;
         return 1;
@@ -131,37 +167,15 @@ int main(int argc, char* argv[]){
 
     parseFlowFile(flowFile);
 
-    // for(auto& node:nodes){
-    //     cout<<node.first<<" "<<node.second.command<<"\n";
-    //     char* cmd = (char*) malloc(sizeof(char) * node.second.command.length());
-    //     for(int i=0;i<node.second.command.length();i++){
-    //         cmd[i]=node.second.command[i];
-    //     }
-    //     system(cmd);
-    // }
-
-    // for(auto& pipe:pipes){
-    //     cout<<pipe.first<<" "<<pipe.second.from<<" "<<pipe.second.to<<"\n";
-    // }
-    cout<<pipes.find(action)->second.from<<" "<<pipes.find(action)->second.to;
-    string str = nodes.find(pipes.find(action)->second.from)->second.command + " | " +  nodes.find(pipes.find(action)->second.to)->second.command;
-    char* cmd = (char*) malloc(sizeof(char) * str.length());
-    for(int i=0;i<str.length();i++){
-        cmd[i]=str[i];
+    if (pipes.find(action) != pipes.end()) {
+        runPipe(pipes[action]);
+    } else if (concatenates.find(action) != concatenates.end()) {
+        concatenateNodes(concatenates[action]);
+    } else if (nodes.find(action) != nodes.end()) {
+        executeNode(nodes[action]);
+    } else {
+        cerr << "Unknown action: " << action << endl;
     }
-    // cout<<cmd;
-    system(cmd);
-    
-    // if (action == "doit") {
-    //     system("")
-    // } 
-    // else if (action == "concatenate") {
-    //     vector<string> parts;
-    //     parts.push_back("cat_foo");
-    //     parts.push_back("foo_to_fuu");  
-    //     concatenateNodes(parts);
-    // }
 
     return 0;
-
 }
