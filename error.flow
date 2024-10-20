@@ -7,6 +7,13 @@ command=wc
 stderr=stdout_to_stderr_for_mkdir
 from=mkdir_attempt
 
+node=list_file
+command=ls
+
+pipe=doit
+from=list_file
+to=word_count
+
 pipe=catch_errors
 from=stdout_to_stderr_for_mkdir
 to=word_count

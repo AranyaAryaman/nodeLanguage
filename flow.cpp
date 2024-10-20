@@ -11,44 +11,56 @@
 
 using namespace std;
 
-struct Node {
+struct Node
+{
     string command;
     vector<string> args;
 };
 
-struct Pipe {
+struct Pipe
+{
     string from;
     string to;
+};
+
+struct StdErr
+{
+    string from;
 };
 
 map<string, Node> nodes;
 map<string, Pipe> pipes;
 map<string, vector<string> > concatenates;
+map<string, StdErr> stdErrorNodes;
 
-void concatenateNodes(const vector<string>& parts);
+void concatenateNodes(const vector<string> &parts);
 
-void parseFlowFile(const string& filename) {
+void parseFlowFile(const string &filename)
+{
     ifstream file(filename);
     string line;
-    
-    while (getline(file, line)) {
+
+    while (getline(file, line))
+    {
         istringstream iss(line);
         string key;
         iss >> key;
         string temp = key.substr(0, 4);
 
-        if (temp == "node") {
+        if (temp == "node")
+        {
             string nodeName, exec;
             size_t pos = key.find("=");
             nodeName = key.substr(pos + 1);
-            getline(file, exec); 
-            pos = exec.find("="); 
-            string cmd = exec.substr(pos+1);
-            //cout<<cmd<<endl;
+            getline(file, exec);
+            pos = exec.find("=");
+            string cmd = exec.substr(pos + 1);
+            // cout<<cmd<<endl;
             cmd.erase(remove(cmd.begin(), cmd.end(), '\''), cmd.end());
-            nodes[nodeName].command = cmd;  
-        } 
-        else if (temp == "pipe") {
+            nodes[nodeName].command = cmd;
+        }
+        else if (temp == "pipe")
+        {
             string pipeName, pipeFrom, pipeTo;
             size_t pos = key.find("=");
             pipeName = key.substr(pos + 1);
@@ -59,7 +71,8 @@ void parseFlowFile(const string& filename) {
             pos = pipeTo.find("=");
             pipes[pipeName].to = pipeTo.substr(pos + 1);
         }
-        else if (temp == "conc") {
+        else if (temp == "conc")
+        {
             string concatName, parts;
             vector<string> toPush;
             size_t pos = key.find("=");
@@ -67,87 +80,140 @@ void parseFlowFile(const string& filename) {
             getline(file, parts);
             int numParts = stoi(parts.substr(parts.find("=") + 1));
             string temp;
-            for (int i = 0; i < numParts; i++) {
+            for (int i = 0; i < numParts; i++)
+            {
                 getline(file, temp);
                 pos = temp.find("=");
                 toPush.push_back(temp.substr(pos + 1));
             }
             concatenates[concatName] = toPush;
         }
+        else if (temp == "stde")
+        {
+            string stderrName, stderrFrom;
+            size_t pos = key.find("=");
+            stderrName = key.substr(pos + 1);
+            getline(file, stderrFrom);
+            pos = stderrFrom.find("=");
+            stdErrorNodes[stderrName].from = stderrFrom.substr(pos + 1); 
+        }
     }
 }
 
-
-void executeNode(const Node& node) {
-    vector<char*> args;
+void executeNode(const Node &node, bool redirectStderr = false)
+{
+    vector<char *> args;
     istringstream iss(node.command);
     string arg;
 
-    while (iss >> arg) {
+    while (iss >> arg)
+    {
         args.push_back(strdup(arg.c_str()));
     }
     args.push_back(nullptr);
 
+    if (redirectStderr)
+    {
+        dup2(STDOUT_FILENO, STDERR_FILENO);
+    }
+
     execvp(args[0], args.data());
     perror("execvp failed");
-    exit(EXIT_FAILURE); 
+    exit(EXIT_FAILURE);
 }
 
-
-void runPipe(Pipe& pipe) {
+void runPipe(Pipe &pipe)
+{
     int pipefds[2];
     ::pipe(pipefds);
 
     pid_t pid = fork();
-    if (pid == 0) {
+    if (pid == 0)
+    {
         close(pipefds[0]);
-        dup2(pipefds[1], STDOUT_FILENO);  
+
+        dup2(pipefds[1], STDOUT_FILENO);
+
         close(pipefds[1]);
-        if (nodes.find(pipe.from) != nodes.end()) {
-            executeNode(nodes[pipe.from]); 
-        } else if (pipes.find(pipe.from) != pipes.end()) {
-            runPipe(pipes[pipe.from]);  
-        } else if (concatenates.find(pipe.from) != concatenates.end()) {
-            concatenateNodes(concatenates[pipe.from]);  
+        if (nodes.find(pipe.from) != nodes.end())
+        {
+            executeNode(nodes[pipe.from]);
         }
-    } else {
+        else if (pipes.find(pipe.from) != pipes.end())
+        {
+            runPipe(pipes[pipe.from]);
+        }
+        else if (concatenates.find(pipe.from) != concatenates.end())
+        {
+            concatenateNodes(concatenates[pipe.from]);
+        }
+        else if (stdErrorNodes.find(pipe.from) != stdErrorNodes.end())
+        {
+            if(nodes.find(stdErrorNodes[pipe.from].from)!=nodes.end()){
+                executeNode(nodes[stdErrorNodes[pipe.from].from],true);
+            }
+        }
+    }
+    else
+    {
         close(pipefds[1]);
-        dup2(pipefds[0], STDIN_FILENO);  
+        dup2(pipefds[0], STDIN_FILENO);
         close(pipefds[0]);
-        if (nodes.find(pipe.to) != nodes.end()) {
-            executeNode(nodes[pipe.to]);  
-        } else if (pipes.find(pipe.to) != pipes.end()) {
-            runPipe(pipes[pipe.to]);  
-        } else if (concatenates.find(pipe.to) != concatenates.end()) {
-            concatenateNodes(concatenates[pipe.to]);  
+        if (nodes.find(pipe.to) != nodes.end())
+        {
+            executeNode(nodes[pipe.to]);
         }
-        wait(nullptr);  
+        else if (pipes.find(pipe.to) != pipes.end())
+        {
+            runPipe(pipes[pipe.to]);
+        }
+        else if (concatenates.find(pipe.to) != concatenates.end())
+        {
+            concatenateNodes(concatenates[pipe.to]);
+        }
+        else if (stdErrorNodes.find(pipe.to) != stdErrorNodes.end())
+        {
+            if(nodes.find(stdErrorNodes[pipe.to].from)!=nodes.end()){
+                executeNode(nodes[stdErrorNodes[pipe.to].from],true);
+            }
+        }
+        wait(nullptr);
     }
 }
 
-
-void concatenateNodes(const vector<string>& parts) {
-    for (const string& part : parts) {
+void concatenateNodes(const vector<string> &parts)
+{
+    for (const string &part : parts)
+    {
         pid_t pid = fork();
-        
-        if (pid == 0) {
-            if (nodes.find(part) != nodes.end()) {
-                executeNode(nodes[part]);  
-            } else if (pipes.find(part) != pipes.end()) {
-                runPipe(pipes[part]);  
-            } else if (concatenates.find(part) != concatenates.end()) {
-                concatenateNodes(concatenates[part]);  
+
+        if (pid == 0)
+        {
+            if (nodes.find(part) != nodes.end())
+            {
+                executeNode(nodes[part]);
             }
-            exit(0);  
-        } else {
+            else if (pipes.find(part) != pipes.end())
+            {
+                runPipe(pipes[part]);
+            }
+            else if (concatenates.find(part) != concatenates.end())
+            {
+                concatenateNodes(concatenates[part]);
+            }
+            exit(0);
+        }
+        else
+        {
             wait(nullptr);
         }
     }
 }
 
-
-int main(int argc, char* argv[]) {
-    if (argc != 3) {
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
         cerr << "Usage: " << argv[0] << " <flow file> <action>" << endl;
         return 1;
     }
@@ -157,13 +223,20 @@ int main(int argc, char* argv[]) {
 
     parseFlowFile(flowFile);
 
-    if (pipes.find(action) != pipes.end()) {
+    if (pipes.find(action) != pipes.end())
+    {
         runPipe(pipes[action]);
-    } else if (concatenates.find(action) != concatenates.end()) {
+    }
+    else if (concatenates.find(action) != concatenates.end())
+    {
         concatenateNodes(concatenates[action]);
-    } else if (nodes.find(action) != nodes.end()) {
+    }
+    else if (nodes.find(action) != nodes.end())
+    {
         executeNode(nodes[action]);
-    } else {
+    }
+    else
+    {
         cerr << "Unknown action: " << action << endl;
     }
 
