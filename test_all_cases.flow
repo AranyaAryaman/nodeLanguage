@@ -1,0 +1,111 @@
+node=cat_foo
+command=cat foo.txt
+
+node=sed_o_u
+command=sed 's/o/u/g'
+
+pipe=foo_to_fuu
+from=cat_foo
+to=sed_o_u
+
+node=word_count
+command=wc -l
+
+pipe=shenanigan
+from=foo_to_fuu
+to=word_count
+
+node=cat_text
+command=cat text.txt
+
+node=grep_word
+command=grep "word"
+
+pipe=text_to_grep
+from=cat_text
+to=grep_word
+
+node=sort_words
+command=sort data.txt
+
+pipe=grep_to_sort
+from=grep_word
+to=sort_words
+
+node=uniq_words
+command=uniq
+
+pipe=sorted_to_uniq
+from=sort_words
+to=uniq_words
+
+node=cat_data
+command=cat data.txt
+
+node=awk_print_first
+command=awk '{print $1}'
+
+pipe=data_to_awk
+from=cat_data
+to=awk_print_first
+
+node=sort_numerically
+command=sort -n
+
+pipe=awk_to_sort
+from=awk_print_first
+to=sort_numerically
+
+node=uniq_count
+command=uniq -c
+
+pipe=sorted_to_uniq_count
+from=sort_numerically
+to=uniq_count
+
+node=cat_log
+command=cat log.txt
+
+node=sed_error
+command=sed 's/error/ERROR/g'
+
+pipe=log_to_error
+from=cat_log
+to=error_to_tee
+
+node=tee_errors
+command=tee errors.txt
+
+pipe=error_to_tee
+from=sed_error
+to=tee_errors
+
+node=cat_input
+command=cat input.txt
+
+node=grep_include
+command=grep "include"
+
+pipe=input_to_grep
+from=cat_input
+to=grep_include
+
+node=sort_includes
+command=sort
+
+pipe=grep_to_sort_includes
+from=grep_include
+to=sort_includes
+
+node=echo_done
+command=echo "Done"
+
+pipe=done_to_tee
+from=echo_done
+to=tee result.txt
+
+concatenate=all_actions
+parts=3
+part_0=log_to_error
+part_1=sorted_to_uniq
+part_2=shenanigan

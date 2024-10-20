@@ -1,0 +1,2 @@
+This is a sample text with words.
+Another line with words to count.
