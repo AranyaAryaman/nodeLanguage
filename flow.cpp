@@ -56,8 +56,18 @@ void parseFlowFile(const string &filename)
             pos = exec.find("=");
             string cmd = exec.substr(pos + 1);
             // cout<<cmd<<endl;
-            cmd.erase(remove(cmd.begin(), cmd.end(), '\''), cmd.end());
-            nodes[nodeName].command = cmd;
+            stringstream cmdStream(cmd);
+            string parsedCmd;
+            char ch;
+            while (cmdStream >> noskipws >> ch) // 'noskipws' to ensure whitespace is not skipped
+            {
+                if (ch != '\'' && ch != '"') // Ignore ' and "
+                {
+                    parsedCmd += ch;
+                }
+            }
+            cout<<parsedCmd<<endl;
+            nodes[nodeName].command = parsedCmd;
         }
         else if (temp == "pipe")
         {
@@ -95,7 +105,7 @@ void parseFlowFile(const string &filename)
             stderrName = key.substr(pos + 1);
             getline(file, stderrFrom);
             pos = stderrFrom.find("=");
-            stdErrorNodes[stderrName].from = stderrFrom.substr(pos + 1); 
+            stdErrorNodes[stderrName].from = stderrFrom.substr(pos + 1);
         }
     }
 }
@@ -149,8 +159,9 @@ void runPipe(Pipe &pipe)
         }
         else if (stdErrorNodes.find(pipe.from) != stdErrorNodes.end())
         {
-            if(nodes.find(stdErrorNodes[pipe.from].from)!=nodes.end()){
-                executeNode(nodes[stdErrorNodes[pipe.from].from],true);
+            if (nodes.find(stdErrorNodes[pipe.from].from) != nodes.end())
+            {
+                executeNode(nodes[stdErrorNodes[pipe.from].from], true);
             }
         }
     }
@@ -173,8 +184,9 @@ void runPipe(Pipe &pipe)
         }
         else if (stdErrorNodes.find(pipe.to) != stdErrorNodes.end())
         {
-            if(nodes.find(stdErrorNodes[pipe.to].from)!=nodes.end()){
-                executeNode(nodes[stdErrorNodes[pipe.to].from],true);
+            if (nodes.find(stdErrorNodes[pipe.to].from) != nodes.end())
+            {
+                executeNode(nodes[stdErrorNodes[pipe.to].from], true);
             }
         }
         wait(nullptr);
