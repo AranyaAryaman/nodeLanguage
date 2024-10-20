@@ -2,7 +2,7 @@ node=cat_foo
 command=cat foo.txt
 
 node=sed_o_u
-command=sed s/o/u/g
+command=sed 's/o/u/g'
 
 pipe=foo_to_fuu
 from=cat_foo

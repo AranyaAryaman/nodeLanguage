@@ -43,7 +43,10 @@ void parseFlowFile(const string& filename) {
             nodeName = key.substr(pos + 1);
             getline(file, exec); 
             pos = exec.find("="); 
-            nodes[nodeName].command = exec.substr(pos + 1);  
+            string cmd = exec.substr(pos+1);
+            //cout<<cmd<<endl;
+            cmd.erase(remove(cmd.begin(), cmd.end(), '\''), cmd.end());
+            nodes[nodeName].command = cmd;  
         } 
         else if (temp == "pipe") {
             string pipeName, pipeFrom, pipeTo;
@@ -124,34 +127,24 @@ void runPipe(Pipe& pipe) {
 
 
 void concatenateNodes(const vector<string>& parts) {
-    int pipefds[2];
-    pid_t pid;
-
-    for (size_t i = 0; i < parts.size(); ++i) {
-        if (i < parts.size() - 1) pipe(pipefds);
-
-        pid = fork();
+    for (const string& part : parts) {
+        pid_t pid = fork();
+        
         if (pid == 0) {
-            if (i > 0) dup2(pipefds[0], STDIN_FILENO);  
-            if (i < parts.size() - 1) dup2(pipefds[1], STDOUT_FILENO);  
-
-            close(pipefds[0]);
-            close(pipefds[1]);
-
-            if (nodes.find(parts[i]) != nodes.end()) {
-                executeNode(nodes[parts[i]]);  
-            } else if (pipes.find(parts[i]) != pipes.end()) {
-                runPipe(pipes[parts[i]]);  
-            } else if (concatenates.find(parts[i]) != concatenates.end()) {
-                concatenateNodes(concatenates[parts[i]]);  
+            if (nodes.find(part) != nodes.end()) {
+                executeNode(nodes[part]);  
+            } else if (pipes.find(part) != pipes.end()) {
+                runPipe(pipes[part]);  
+            } else if (concatenates.find(part) != concatenates.end()) {
+                concatenateNodes(concatenates[part]);  
             }
+            exit(0);  
         } else {
-            if (i > 0) close(pipefds[0]);
-            if (i < parts.size() - 1) close(pipefds[1]);
             wait(nullptr);
         }
     }
 }
+
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
