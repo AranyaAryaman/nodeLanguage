@@ -21,11 +21,11 @@ struct Pipe {
     string to;
 };
 
-void concatenateNodes(const vector<string>& parts);
-
 map<string, Node> nodes;
 map<string, Pipe> pipes;
 map<string, vector<string> > concatenates;
+
+void concatenateNodes(const vector<string>& parts);
 
 void parseFlowFile(const string& filename) {
     ifstream file(filename);
