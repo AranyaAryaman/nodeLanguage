@@ -188,7 +188,7 @@ void runPipe(Pipe &pipe)
         close(pipefds[1]);
         if (fileNodes.find(pipe.from) != fileNodes.end())
         {
-            executeNode(nodes["read_file"], false, fileNodes[pipe.from].filename, "");
+            executeNode(nodes[pipe.to], false, fileNodes[pipe.from].filename, "");
         }
         else if (nodes.find(pipe.from) != nodes.end())
         {
@@ -215,7 +215,11 @@ void runPipe(Pipe &pipe)
         close(pipefds[1]);
         dup2(pipefds[0], STDIN_FILENO);
         close(pipefds[0]);
-        if (nodes.find(pipe.to) != nodes.end())
+        if (fileNodes.find(pipe.to) != fileNodes.end())
+        {
+            executeNode(nodes[pipe.from], false, "", fileNodes[pipe.to].filename);
+        }
+        else if (nodes.find(pipe.to) != nodes.end())
         {
             executeNode(nodes[pipe.to]);
         }
