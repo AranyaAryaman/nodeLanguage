@@ -262,6 +262,13 @@ void concatenateNodes(const vector<string> &parts)
             {
                 concatenateNodes(concatenates[part]);
             }
+            else if (stdErrorNodes.find(part) != stdErrorNodes.end())
+            {
+                if (nodes.find(stdErrorNodes[part].from) != nodes.end())
+                {
+                    executeNode(nodes[stdErrorNodes[part].from], true);
+                }
+            }
             exit(0);
         }
         else
