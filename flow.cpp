@@ -1,5 +1,4 @@
 #include <iostream>
-#include <unordered_map>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -8,6 +7,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <cstdlib>
+#include <fcntl.h> 
+#include <sys/stat.h>
 
 using namespace std;
 
@@ -28,10 +29,17 @@ struct StdErr
     string from;
 };
 
+struct FileNode
+{
+    string filename;
+};
+
+
 map<string, Node> nodes;
 map<string, Pipe> pipes;
 map<string, vector<string> > concatenates;
 map<string, StdErr> stdErrorNodes;
+map<string, FileNode> fileNodes;
 
 void concatenateNodes(const vector<string> &parts);
 
@@ -59,14 +67,14 @@ void parseFlowFile(const string &filename)
             stringstream cmdStream(cmd);
             string parsedCmd;
             char ch;
-            while (cmdStream >> noskipws >> ch) // 'noskipws' to ensure whitespace is not skipped
+            while (cmdStream >> noskipws >> ch) 
             {
-                if (ch != '\'' && ch != '"') // Ignore ' and "
+                if (ch != '\'' && ch != '"') 
                 {
                     parsedCmd += ch;
                 }
             }
-            cout<<parsedCmd<<endl;
+            //cout<<parsedCmd<<endl;
             nodes[nodeName].command = parsedCmd;
         }
         else if (temp == "pipe")
@@ -107,10 +115,19 @@ void parseFlowFile(const string &filename)
             pos = stderrFrom.find("=");
             stdErrorNodes[stderrName].from = stderrFrom.substr(pos + 1);
         }
+        else if (temp == "file")
+        {
+            string fileName, fileAttr;
+            size_t pos = key.find("=");
+            fileName = key.substr(pos + 1);
+            getline(file, fileAttr);
+            pos = fileAttr.find("=");
+            fileNodes[fileName].filename = fileAttr.substr(pos + 1);
+        }
     }
 }
 
-void executeNode(const Node &node, bool redirectStderr = false)
+void executeNode(const Node &node, bool redirectStderr = false, string inputFile = "", string outputFile = "")
 {
     vector<char *> args;
     istringstream iss(node.command);
@@ -121,6 +138,30 @@ void executeNode(const Node &node, bool redirectStderr = false)
         args.push_back(strdup(arg.c_str()));
     }
     args.push_back(nullptr);
+
+    if (!inputFile.empty())
+    {
+        int fd = open(inputFile.c_str(), O_RDONLY);
+        if (fd == -1)
+        {
+            perror("Error opening input file");
+            exit(EXIT_FAILURE);
+        }
+        dup2(fd, STDIN_FILENO); 
+        close(fd);
+    }
+
+    if (!outputFile.empty())
+    {
+        int fd = open(outputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd == -1)
+        {
+            perror("Error opening output file");
+            exit(EXIT_FAILURE);
+        }
+        dup2(fd, STDOUT_FILENO); 
+        close(fd);
+    }
 
     if (redirectStderr)
     {
@@ -145,7 +186,11 @@ void runPipe(Pipe &pipe)
         dup2(pipefds[1], STDOUT_FILENO);
 
         close(pipefds[1]);
-        if (nodes.find(pipe.from) != nodes.end())
+        if (fileNodes.find(pipe.from) != fileNodes.end())
+        {
+            executeNode(nodes["read_file"], false, fileNodes[pipe.from].filename, "");
+        }
+        else if (nodes.find(pipe.from) != nodes.end())
         {
             executeNode(nodes[pipe.from]);
         }
@@ -195,10 +240,10 @@ void runPipe(Pipe &pipe)
 
 void concatenateNodes(const vector<string> &parts)
 {
-    for (const string &part : parts)
+    for (int i=0; i<parts.size();i++)
     {
         pid_t pid = fork();
-
+        string part = parts[i];
         if (pid == 0)
         {
             if (nodes.find(part) != nodes.end())
