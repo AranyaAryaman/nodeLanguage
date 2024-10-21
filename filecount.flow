@@ -1,9 +1,9 @@
-node=list_files
+node=list_dir
 command=ls
 
-node=word_count
-command=wc
+node=tee_to_foo
+command=tee foo.txt
 
-pipe=doit
-from=list_files
-to=word_count
+pipe=ls_to_foo
+from=list_dir
+to=tee_to_foo
